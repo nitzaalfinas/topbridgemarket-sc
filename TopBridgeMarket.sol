@@ -538,14 +538,13 @@ interface ITopBridgeMarket {
         IERC1155 _erc1155Address, 
         uint256 _nftId, 
         address payable _introducer, 
-        
         uint256 _sellType,
-        uint256 _price,
+        uint256 _priceOne,
         uint256 _endTime
     ) external returns (uint256 returnSellId);
 
     function setSell(
-        IERC1155 _nftAddress,
+        IERC1155 _erc1155Address,
         uint256 _nftId,
         uint256 _nftTotal,
         uint256 _priceOne
@@ -557,17 +556,26 @@ interface ITopBridgeMarket {
     function cancelSell(uint256 _sellId) external returns (bool);
 
     function setSellAuction(
-        IERC1155 _nftAddress,
+        IERC1155 _erc1155Address,
         uint256 _nftId,
         uint256 _nftTotal,
         uint256 _priceOne,
         uint256 _endTime
     )
-    external returns (uint256 returnSellId);
+    external returns (uint256);
 
     function setBid(uint256 _id) external payable;
 
     function swap(uint256 _sellId, uint256 _jumlahNft, uint256 _priceOne) external payable;
+
+    function setBuy(
+        IERC1155 _erc1155Address, 
+        uint256 _nftId,
+        uint256 _qty,
+        uint256 _priceOne
+    ) external payable returns (uint256);
+    
+    function sellExec(uint256 _buyId, uint256 _qty) external payable returns (uint256);
 }
 
 /// @title TopBridgeMarket
