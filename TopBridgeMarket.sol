@@ -581,6 +581,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     address payable public comBase;     // commision base 
     address public aucExecutor;
     bool    public contractPause;
+    uint256    public historyCount;
 
     struct SellFixObj {
         uint256 mkStId;
@@ -646,6 +647,13 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         uint256 coinForIntroducer;
     }
 
+    struct HistoryObj {
+        bool buySellTf; // buy: true, sell: false
+        uint256 buyOrSellid;
+        uint256 price;
+        uint256 qty;
+    }
+
     // -------- group market start --------
     uint256 public mkStCount;
     mapping(uint256 => address)    public mkStCreators;    // st_id: creator_address
@@ -680,6 +688,10 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     mapping(uint256 => uint256) public sellAucHighBids;       // sell_id: higher_bid_price
     mapping(uint256 => address) public sellAucHighAddresses;  // sell_id: higher_bidder_address
     mapping(uint256 => uint256) public sellAucCounts;         // sell_id: number_of_bid
+
+    // -------- swap histories --------
+    mapping(uint256 => HistoryObj) public histories;   // history_id: obj
+    // -------- swap histories --------
 
     uint256 public buyCount;
     mapping(uint256 => BuyObj) public buys;       // buy_id: obj
@@ -1346,13 +1358,23 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
 
         // jika ini adalah penjualan pertama,
         // maka harus dicari komponen biaya-nya
-        if(sellFirsts[_sellId] == true) {
+        if(sellFirsts[_sellId] == true) {    
             _swapSell(true, _sellId, totalCoin, addrForTransfer);
         }
         // jika ini bukan penjualan pertama,
         else {
             _swapSell(false, _sellId, totalCoin, addrForTransfer);
         }
+
+        // ----- catatkan dalam history -----
+        historyCount = historyCount + 1;
+        histories[historyCount] = HistoryObj(
+            false,
+            _sellId,
+            _priceOne,
+            _jumlahNft
+        );
+        // ----- catatkan dalam history -----
 
         if(sellFixs[_sellId].nftTotal == _jumlahNft) {
             
@@ -1413,6 +1435,16 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             else {
                 _swapSell(false, _sellId, totalCoin, addrForTransfer);
             }
+
+            // ----- catatkan dalam history -----
+            historyCount = historyCount + 1;
+            histories[historyCount] = HistoryObj(
+                false,
+                _sellId,
+                totalCoin.div(theNftTotal),
+                theNftTotal
+            );
+            // ----- catatkan dalam history -----
             
             _safeNftTransferFrom(address(this), buyer, theNftAddress, theNftId, theNftTotal);
 
@@ -1426,6 +1458,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         sellAucs[_sellId].executed = true;
     }
 
+    // Pada function ini, coin diambil dan disimpan dalam smartcontract
     function setBuy(
         IERC1155 _erc1155Address, 
         uint256 _nftId,
@@ -1445,9 +1478,6 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         require(mkSt1155AndIds[erc1155IdKey] != 0, "NFT not listed");
         // --- NFT ini harus sudah pernah listing disini ---
 
-        // ambil koin tersebut dan masukkan kedalam smartcontract
-        //payable(address(this)).transfer(msg.value);
-        
         // catatakan dalam blockchain
         buys[buyCount] = BuyObj(
             msg.sender,
@@ -1565,8 +1595,17 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
 
         // transfer coin kepada introducer 
         payable(mkStIntros[mkStId]).transfer(coinSpread.coinForIntroducer);
-
         // ---------
+
+        // ----- catatkan dalam history -----
+        historyCount = historyCount + 1;
+        histories[historyCount] = HistoryObj(
+            true,
+            _buyId,
+            buys[_buyId].priceOne,
+            _qty
+        );
+        // ----- catatkan dalam history -----
 
         // kirim NFT kepada buyer 
         _safeNftTransferFrom(
