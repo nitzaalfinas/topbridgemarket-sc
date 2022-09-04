@@ -657,7 +657,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
 
     struct HistoryObj {
         bool buySellTf; // buy: true, sell: false
-        uint256 buyOrSellid;
+        uint256 buyOrSellId;
         uint256 price;
         uint256 qty;
     }
@@ -1524,6 +1524,31 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         // --- komponen fee disini akan berbeda jika NFT charity dan bukan ---
 
         return buyCount;
+    }
+
+    function cancelBuy(uint256 _buyId) public returns (bool) {
+        require(contractPause == false, "Contract pause");
+
+        // cari buy dari map buys
+        BuyObj memory buyObj = buys[_buyId];
+
+        // pastikan belum di eksekusi
+        require(buyObj.executed == false, "Executed");
+
+        // buy ini harus punya dia sendiri
+        require(msg.sender == buyObj.buyer, "Not your data");
+        
+        // kalkulasi yang akan ditransfer
+        uint256 coinAmount = (buyObj.nftAmount).mul(buyObj.priceOne);
+
+        // balikkan yang belum terbeli
+        payable(buyObj.buyer).transfer(coinAmount);
+
+        // jadikan nftAmount = 0 dan executed = true
+        buys[_buyId].nftAmount = 0;
+        buys[_buyId].executed = true;
+
+        return true;
     }
     
     /**
