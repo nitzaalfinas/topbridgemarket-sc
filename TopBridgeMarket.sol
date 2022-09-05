@@ -658,6 +658,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     struct HistoryObj {
         bool buySellTf; // buy: true, sell: false
         uint256 buyOrSellId;
+        address to;      // nft-nya dikirim kemana? kalau sell, artinya dari seller ke buyer. Kalau buys, dari 
         uint256 price;
         uint256 qty;
     }
@@ -1379,6 +1380,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         histories[historyCount] = HistoryObj(
             false,
             _sellId,
+            msg.sender,
             _priceOne,
             _jumlahNft
         );
@@ -1635,6 +1637,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         histories[historyCount] = HistoryObj(
             true,
             _buyId,
+            buys[_buyId].buyer,
             buys[_buyId].priceOne,
             _qty
         );
