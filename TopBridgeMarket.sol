@@ -1451,6 +1451,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             histories[historyCount] = HistoryObj(
                 false,
                 _sellId,
+                buyer,
                 totalCoin.div(theNftTotal),
                 theNftTotal
             );
