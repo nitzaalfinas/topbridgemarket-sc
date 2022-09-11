@@ -1288,49 +1288,35 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         return sellNumber;
     }
 
-    /**
-        * Pada bagian ini, bidder wajib memasukkan msg.value 
-        * TODO:
-        * - Pada bagian ini cara cek log adalah hapus atau comment code dibawahnya.
-        *   Jika sampai, maka code tersebut tidak error
-        *   Jika tidak sampai atau error pada code yang dihapus, artinya pada bagian code itu ada error
-    */
     function setBid(uint256 _id) public payable {
         require(contractPause == false, "Contract pause");
 
         require(sellTypes[_id] == 2, "Not auction");
 
-        // cek apakah sudah executed atau belum 
         require(sellAucs[_id].executed == false, "Has been executed");
 
         require(sellAucs[_id].endTime > block.timestamp, "Auction end");
 
         require(msg.value > sellAucHighBids[_id], "Bid too low");
 
-        // untuk menerima ether, kita tidak akan menggunakan ini
-        // karena function payable sudah langsung menerima ether dalam smartcontract
-        // payable(address(this)).transfer(msg.value); <=== sebagai pengingat, code ini tetap disini untuk development agar tidak terulang lagi
-        // silahkan baca referensi berikut: https://ethereum.stackexchange.com/questions/41401/how-store-eth-in-a-smart-contract
-        // dan referensi berikut ini yang cukup penting juga https://programtheblockchain.com/posts/2017/12/15/writing-a-contract-that-handles-ether/
-
-        // harga tertinggi bid
+        // highest bid price
         sellAucHighBids[_id] = msg.value;
 
-        // address bid tertinggi
+        // highest bider address
         sellAucHighAddresses[_id] = msg.sender;
 
-        // jumlah bid pada auction ini
+        // number of bid from this auction
         uint256 newAucCount = sellAucCounts[_id] + 1;
         sellAucCounts[_id] = newAucCount; 
 
-        // harga dan ranking bid
+        // bid price and bid rank
         sellAucPrices[_id][newAucCount] = msg.value;
         sellAucAddressRanks[_id][newAucCount] = msg.sender;
         
         if(newAucCount > 1) {
             uint256 idSebelum = newAucCount - 1;
 
-            // kembalikan coin kepada bidder sebelumnya
+            // Send the coin to the last bidder because there is new bidder with higher price in the blockchain
             payable(sellAucAddressRanks[_id][idSebelum]).transfer(sellAucPrices[_id][idSebelum]);
         }
     }
@@ -1338,44 +1324,41 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     function swap(uint256 _sellId, uint256 _jumlahNft, uint256 _priceOne) public payable {
         require(contractPause == false, "Contract pause");
 
-        // cek apakah sudah executed atau belum 
         require(sellFixs[_sellId].executed == false, "Has been executed");
 
-        // ambil market start id nya
         uint256 mkStId = sellFixs[_sellId].mkStId;
 
-        // dari market start id kita bisa dapat `erc1155 contract address` dan `erc1155 id` yang dijual
+        // from market start id we can get `erc1155 contract address` and `erc1155 id`
         IERC1155 theNftAddress  = mkSt1155s[mkStId];
         uint256 theNftId        = mkSt1155Ids[mkStId];
         address addrCreator     = mkStCreators[mkStId];
-        address addrSeller      = sellFixs[_sellId].seller;  // pada penjualan pertama, address creator pasti sama dengan seller
+        address addrSeller      = sellFixs[_sellId].seller;  // In the first sell, the creator must be the same with the seller
         address addrIntroducer  = mkStIntros[mkStId];
 
         require(sellFixs[_sellId].nftTotal >= _jumlahNft, "Number of requests not met");
 
-        // buyer menginputkan jumlah yang dia inginkan
-        // karena ada konsep harga bisa diubah oleh seller
+        // In this market, the seller can change the price.
+        // To prevent the price change, the buyer must input the price that he want
         require(sellFixs[_sellId].priceOne == _priceOne, "Sell price has changed");
 
-        // total yang harus dibayarkan oleh buyer
+        // the total to be paid by the buyer
         uint256 totalCoin = _jumlahNft.mul(sellFixs[_sellId].priceOne);
 
-        // total yang harus dibayar buyer harus sama dengan total main coin yang dikirimkan oleh buyer
+        // the total to be paid by the buyer must be the same as the total coin sent by the buyer
         require(msg.value == totalCoin, "Wrong total send");
 
         AddrForTransfer memory addrForTransfer = AddrForTransfer(addrSeller, addrCreator, addrIntroducer);
 
-        // jika ini adalah penjualan pertama,
-        // maka harus dicari komponen biaya-nya
+        // Get the distribution fee and transfer for sell first (listing)
         if(sellFirsts[_sellId] == true) {    
             _swapSell(true, _sellId, totalCoin, addrForTransfer);
         }
-        // jika ini bukan penjualan pertama,
+        // If not first sell
         else {
             _swapSell(false, _sellId, totalCoin, addrForTransfer);
         }
 
-        // ----- catatkan dalam history -----
+        // ----- store in the history -----
         historyCount = historyCount + 1;
         histories[historyCount] = HistoryObj(
             false,
@@ -1385,7 +1368,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             _priceOne,
             _jumlahNft
         );
-        // ----- catatkan dalam history -----
+        // ----- store in the history -----
 
         if(sellFixs[_sellId].nftTotal == _jumlahNft) {
             
@@ -1397,7 +1380,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             sellFixs[_sellId].nftTotal = (sellFixs[_sellId].nftTotal).sub(_jumlahNft);
         }
         
-        // transfer NFT kepada si pembeli
+        // NFT transfer to the buyer
         _safeNftTransferFrom(
             address(this), 
             msg.sender, 
@@ -1416,10 +1399,9 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
 
         require(sellAucs[_sellId].executed == false, "Has been executed");
 
-        // ambil market start id nya
+        // market starting ID (listing data)
         uint256 mkStId = sellAucs[_sellId].mkStId;
 
-        // ambil variable
         uint256  theNftTotal    = sellAucs[_sellId].nftTotal;
         IERC1155 theNftAddress  = mkSt1155s[mkStId];
         uint256  theNftId       = mkSt1155Ids[mkStId];
@@ -1427,27 +1409,27 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         address  addrSeller     = sellAucs[_sellId].seller;    // pada penjualan pertama, address creator pasti sama dengan seller
         address  addrIntroducer = mkStIntros[mkStId];
 
-        // jika ada yang nge-bid
+        // if someone bid
         if(sellAucCounts[_sellId] > 0) {
 
-            // buyer adalah orang yang meletakkan penawaran tertinggi
+            // the buyer is the person who puts the highest bid
             address buyer = sellAucHighAddresses[_sellId];
 
-            // harga penawaran tertinggi NFT
+            // highest price
             uint256 totalCoin = sellAucHighBids[_sellId];
 
             AddrForTransfer memory addrForTransfer = AddrForTransfer(addrSeller, addrCreator, addrIntroducer);
 
-            // jika ini adalah penjualan pertama,             
+            // first sell
             if(sellFirsts[_sellId] == true) {
                 _swapSell(true, _sellId, totalCoin, addrForTransfer);
             }
-            // jika ini bukan penjualan pertama,
+            // not first sell
             else {
                 _swapSell(false, _sellId, totalCoin, addrForTransfer);
             }
 
-            // ----- catatkan dalam history -----
+            // ----- history -----
             historyCount = historyCount + 1;
             histories[historyCount] = HistoryObj(
                 false,
@@ -1457,13 +1439,13 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
                 totalCoin.div(theNftTotal),
                 theNftTotal
             );
-            // ----- catatkan dalam history -----
+            // ----- history -----
             
             _safeNftTransferFrom(address(this), buyer, theNftAddress, theNftId, theNftTotal);
 
         }
 
-        // jika tidak ada yang nge-bid, maka NFT dibalikkan kepada seller
+        // if no one bids, then the NFT is returned to the seller
         else if (sellAucCounts[_sellId] == 0) {
             _safeNftTransferFrom(address(this), sellAucs[_sellId].seller, theNftAddress, theNftId, theNftTotal);       
         }
