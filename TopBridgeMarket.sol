@@ -3,11 +3,6 @@
 pragma solidity ^0.8.12;
 
 /**
- * Ini adalah versi dengan mata uang utama dari network (ETH atau BNB)
- */
-
-
-/**
  * @dev Interface of the ERC165 standard, as defined in the
  * https://eips.ethereum.org/EIPS/eip-165[EIP].
  *
@@ -549,7 +544,7 @@ interface ITopBridgeMarket {
         uint256 _nftTotal,
         uint256 _priceOne
     )
-    external payable returns (uint256 returnSellId);
+    external returns (uint256 returnSellId);
 
     function updateSellPrice(uint256 _listId, uint256 _priceOne) external returns (bool);
 
@@ -575,7 +570,7 @@ interface ITopBridgeMarket {
         uint256 _priceOne
     ) external payable returns (uint256);
     
-    function sellExec(uint256 _buyId, uint256 _qty) external payable returns (uint256);
+    function sellExec(uint256 _buyId, uint256 _qty) external returns (uint256);
 }
 
 /// @title TopBridgeMarket
@@ -784,10 +779,6 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         aucExecutor = _address;
     }
     
-    function _safeNftTransferFrom(address sender, address recipient, IERC1155 nftAddress, uint256 tokenId, uint256 amount) private {
-        nftAddress.safeTransferFrom(sender, recipient, tokenId, amount, '');
-    }
-
     function _swapSell(
         bool isThisFirstSell, 
         uint256 _sellId,
@@ -883,28 +874,33 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     private returns (uint256) {
         require(contractPause == false, "Contract pause");
 
+        IERC1155 erc1155Address = mkSt1155s[_mkStId];
+        uint256 nftId = mkSt1155Ids[_mkStId];
+
         // Checking seller the NFT balance
-        uint256 sellerNftBalance = mkSt1155s[_mkStId].balanceOf(msg.sender, mkSt1155Ids[_mkStId]);
+        uint256 sellerNftBalance = erc1155Address.balanceOf(msg.sender, nftId);
         require(sellerNftBalance >= _nftTotal, "Not enough balance");
 
         // must be approved
-        require(mkSt1155s[_mkStId].isApprovedForAll(msg.sender, address(this)) == true, "Not approved");
+        require(erc1155Address.isApprovedForAll(msg.sender, address(this)) == true, "Not approved");
 
         // Taking the NFT from user and store in this SC
-        _safeNftTransferFrom(msg.sender, address(this), mkSt1155s[_mkStId], mkSt1155Ids[_mkStId], _nftTotal);
+        erc1155Address.safeTransferFrom(msg.sender, address(this), nftId, _nftTotal, '');
 
         // The id for map
         sellCount = sellCount + 1;
 
+        uint256 localSellCount = sellCount; // avoid frequent reading from storage
+
         // storing in the blockchain; Is this the first sale or no? 
-        sellFirsts[sellCount] = _firstSellTrueFalse;
+        sellFirsts[localSellCount] = _firstSellTrueFalse;
         
         // distribution of transfers and fees (in percentage)
         if(_firstSellTrueFalse == true) {    // first sell goes here
 
             // non-charity
             if(_charity == false) {
-                sellFirstFees[sellCount] = SellFirstFeeObj(
+                sellFirstFees[localSellCount] = SellFirstFeeObj(
                     250, 
                     8000,
                     1650,
@@ -913,7 +909,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             }
             // charity
             else {
-                sellFirstFees[sellCount] = SellFirstFeeObj(
+                sellFirstFees[localSellCount] = SellFirstFeeObj(
                     250, 
                     975,
                     775,
@@ -924,7 +920,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         else {    // other than first sell goes here
             // non-charity
             if(_charity == false) {
-                sellFees[sellCount] = SellFeeObj(
+                sellFees[localSellCount] = SellFeeObj(
                     250, 
                     8775,
                     780,
@@ -934,7 +930,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             }
             // charity
             else {
-                sellFees[sellCount] = SellFeeObj(
+                sellFees[localSellCount] = SellFeeObj(
                     250, 
                     8775,
                     98,
@@ -946,9 +942,9 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
 
         // Storing the type of sale (fixed or auction)
         // but in this function, it's always fixed
-        sellTypes[sellCount] = 1; 
+        sellTypes[localSellCount] = 1; 
 
-        sellFixs[sellCount] = SellFixObj(
+        sellFixs[localSellCount] = SellFixObj(
             _mkStId,
             msg.sender,
             _nftTotal,
@@ -957,13 +953,13 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         );
         
         emit EventSellFix(
-            sellCount, 
+            localSellCount, 
             msg.sender, 
             _nftTotal, 
             _priceOne
         );
 
-        return sellCount;
+        return localSellCount;
     }
 
     function _setSellAuctionCore(
@@ -977,31 +973,36 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     private returns (uint256) {
         require(contractPause == false, "Contract pause");
 
+        IERC1155 erc1155Address = mkSt1155s[_mkStId];
+        uint256 nftId = mkSt1155Ids[_mkStId];
+
         // Checking seller NFT balance
-        uint256 sellerNftBalance = mkSt1155s[_mkStId].balanceOf(msg.sender, mkSt1155Ids[_mkStId]);
+        uint256 sellerNftBalance = erc1155Address.balanceOf(msg.sender, nftId);
         require(sellerNftBalance >= _nftTotal, "Not enough balance");
 
         // Must be approved
-        require(mkSt1155s[_mkStId].isApprovedForAll(msg.sender, address(this)) == true, "Not approved");
+        require(erc1155Address.isApprovedForAll(msg.sender, address(this)) == true, "Not approved");
         
         // Checking auction end time 
         require(block.timestamp < _endTime, "End time must be bigger");
 
         // Taking the NFT from user and store in this SC
-        _safeNftTransferFrom(msg.sender, address(this), mkSt1155s[_mkStId], mkSt1155Ids[_mkStId], _nftTotal);
+        erc1155Address.safeTransferFrom(msg.sender, address(this), nftId, _nftTotal, '');
 
-        // The id for map
+        // New ID for the map
         sellCount = sellCount + 1;
 
+        uint256 localSellCount = sellCount; // avoid frequent reading from storage
+
         // storing in the blockchain; Is this the first sale or no? 
-        sellFirsts[sellCount] = _firstSellTrueFalse;
+        sellFirsts[localSellCount] = _firstSellTrueFalse;
 
         // distribution of transfers and fees (in percentage)
         if(_firstSellTrueFalse == true) {
 
             // non-charity
             if(_charity == false) {
-                sellFirstFees[sellCount] = SellFirstFeeObj(
+                sellFirstFees[localSellCount] = SellFirstFeeObj(
                     250, 
                     8000,
                     1650,
@@ -1010,7 +1011,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             }
             // charity
             else {
-                sellFirstFees[sellCount] = SellFirstFeeObj(
+                sellFirstFees[localSellCount] = SellFirstFeeObj(
                     250, 
                     975,
                     775,
@@ -1021,7 +1022,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         else {
             // non-charity
             if(_charity == false) {
-                sellFees[sellCount] = SellFeeObj(
+                sellFees[localSellCount] = SellFeeObj(
                     250, 
                     8775,
                     780,
@@ -1031,7 +1032,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             }
             // charity
             else {
-                sellFees[sellCount] = SellFeeObj(
+                sellFees[localSellCount] = SellFeeObj(
                     250, 
                     8775,
                     98,
@@ -1043,9 +1044,9 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
 
         // Storing the type of sale (fixed or auction)
         // but in this function, it's always auction
-        sellTypes[sellCount] = 2; 
+        sellTypes[localSellCount] = 2; 
 
-        sellAucs[sellCount] = SellAucObj(
+        sellAucs[localSellCount] = SellAucObj(
             _mkStId,
             msg.sender,
             _endTime,
@@ -1054,23 +1055,23 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             false
         );
 
-        sellAucHighBids[sellCount] = _priceAll;
+        sellAucHighBids[localSellCount] = _priceAll;
 
-        sellAucStartPrices[sellCount] = _priceAll;
+        sellAucStartPrices[localSellCount] = _priceAll;
 
-        sellAucHighAddresses[sellCount] = msg.sender;
+        sellAucHighAddresses[localSellCount] = msg.sender;
 
-        sellAucCounts[sellCount] = 0;
+        sellAucCounts[localSellCount] = 0;
 
         emit EventSellAuc(
-            sellCount,
+            localSellCount,
             msg.sender,
             _endTime,
             _nftTotal, 
             _priceAll
         );
 
-        return sellCount;
+        return localSellCount;
     }
 
     /**
@@ -1129,23 +1130,25 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         // ----- start market (listing) -----
         mkStCount = mkStCount + 1;
 
-        mkStCreators[mkStCount]    = msg.sender;
-        mkSt1155s[mkStCount]       = _erc1155Address;
-        mkSt1155Ids[mkStCount]     = _nftId;
-        mkSt1155Ams[mkStCount]     = _erc1155Address.getErc1155Amounts(_nftId);
-        mkStIntros[mkStCount]      = _introducer;
-        mkStCharities[mkStCount]   = _charity;
+        uint256 localMkStCount = mkStCount; // avoid frequent reading from storage
+
+        mkStCreators[localMkStCount]    = msg.sender;
+        mkSt1155s[localMkStCount]       = _erc1155Address;
+        mkSt1155Ids[localMkStCount]     = _nftId;
+        mkSt1155Ams[localMkStCount]     = _erc1155Address.getErc1155Amounts(_nftId);
+        mkStIntros[localMkStCount]      = _introducer;
+        mkStCharities[localMkStCount]   = _charity;
         
-        mkSt1155AndIds[erc1155IdKey] = mkStCount;
+        mkSt1155AndIds[erc1155IdKey] = localMkStCount;
         // ----- start market (listing) -----
 
         if (_sellType == 1) {
 
-            mkStPrices[mkStCount] = _priceOne; 
+            mkStPrices[localMkStCount] = _priceOne; 
 
             uint256 numberSell = _setSellCore(
                 _charity,
-                mkStCount,
+                localMkStCount,
                 _erc1155Address.getErc1155Amounts(_nftId),
                 _priceOne,
                 true
@@ -1158,11 +1161,11 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             uint256 nftAmount = _erc1155Address.getErc1155Amounts(_nftId);
             uint256 priceAll = _priceOne * nftAmount;
 
-            mkStPrices[mkStCount] = priceAll; 
+            mkStPrices[localMkStCount] = priceAll; 
 
             uint256 numberSell = _setSellAuctionCore(
                 _charity,
-                mkStCount,
+                localMkStCount,
                 nftAmount,
                 priceAll,
                 _endTime,
@@ -1183,7 +1186,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         uint256 _nftTotal,
         uint256 _priceOne
     )
-    public payable returns (uint256 returnSellId) {
+    public returns (uint256 returnSellId) {
         require(contractPause == false, "Contract pause");
 
         // Creating key; `erc1155_address - id`
@@ -1246,7 +1249,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         uint256 thisMkStId = sellFixs[_sellId].mkStId;
         IERC1155 thisErc1155Address = mkSt1155s[thisMkStId];
         uint256 thisErc1155Id = mkSt1155Ids[thisMkStId];
-        _safeNftTransferFrom(address(this), msg.sender, thisErc1155Address, thisErc1155Id, sellFixs[_sellId].nftTotal);
+        thisErc1155Address.safeTransferFrom(address(this), msg.sender, thisErc1155Id, sellFixs[_sellId].nftTotal, '');
         // ----- Transferint the NFT to the seller -----
         
         // Set to 0 because it has been transferred
@@ -1335,7 +1338,8 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         address addrSeller      = sellFixs[_sellId].seller;  // In the first sell, the creator must be the same with the seller
         address addrIntroducer  = mkStIntros[mkStId];
 
-        require(sellFixs[_sellId].nftTotal >= _jumlahNft, "Number of requests not met");
+        uint256 nftTotalInStorage = sellFixs[_sellId].nftTotal;
+        require(nftTotalInStorage >= _jumlahNft, "Number of requests not met");
 
         // In this market, the seller can change the price.
         // To prevent the price change, the buyer must input the price that he want
@@ -1370,24 +1374,18 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         );
         // ----- store in the history -----
 
-        if(sellFixs[_sellId].nftTotal == _jumlahNft) {
+        if(nftTotalInStorage == _jumlahNft) {
             
             sellFixs[_sellId].nftTotal = 0;
 
             sellFixs[_sellId].executed = true;
         }
         else {
-            sellFixs[_sellId].nftTotal = (sellFixs[_sellId].nftTotal).sub(_jumlahNft);
+            sellFixs[_sellId].nftTotal = (nftTotalInStorage).sub(_jumlahNft);
         }
         
         // NFT transfer to the buyer
-        _safeNftTransferFrom(
-            address(this), 
-            msg.sender, 
-            theNftAddress, 
-            theNftId, 
-            _jumlahNft
-        );
+        theNftAddress.safeTransferFrom(address(this), msg.sender, theNftId, _jumlahNft, '');
     }
 
     function swapAuc(uint256 _sellId) public payable onlyAucExecutor  {
@@ -1441,19 +1439,18 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             );
             // ----- history -----
             
-            _safeNftTransferFrom(address(this), buyer, theNftAddress, theNftId, theNftTotal);
+            // NFT Transfer
+            theNftAddress.safeTransferFrom(address(this), buyer, theNftId, theNftTotal, '');
 
         }
-
         // if no one bids, then the NFT is returned to the seller
         else if (sellAucCounts[_sellId] == 0) {
-            _safeNftTransferFrom(address(this), sellAucs[_sellId].seller, theNftAddress, theNftId, theNftTotal);       
+            theNftAddress.safeTransferFrom(address(this), sellAucs[_sellId].seller, theNftId, theNftTotal, '');
         }
 
         sellAucs[_sellId].executed = true;
     }
 
-    // Pada function ini, coin diambil dan disimpan dalam smartcontract
     function setBuy(
         IERC1155 _erc1155Address, 
         uint256 _nftId,
@@ -1464,16 +1461,13 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         
         buyCount = buyCount + 1;
 
-        // jumlah yang ditransfer harus priceOne * qty 
+        // transferred amount must be priceOne*qty
         uint256 totalCoin = _priceOne.mul(_qty);
         require(msg.value == totalCoin, "Coin does not match");
 
-        // --- NFT ini harus sudah pernah listing disini ---
         bytes32 erc1155IdKey  = keccak256(abi.encode(_erc1155Address, "-" , _nftId));
         require(mkSt1155AndIds[erc1155IdKey] != 0, "NFT not listed");
-        // --- NFT ini harus sudah pernah listing disini ---
 
-        // catatakan dalam blockchain
         buys[buyCount] = BuyObj(
             msg.sender,
             _erc1155Address,
@@ -1483,13 +1477,11 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
             false
         );
 
-        // --- komponen fee disini akan berbeda jika NFT charity dan bukan ---
-        // cari market start id berdasarkan erc1155 address dan nft id nya
         uint256 marketStartId =  mkSt1155AndIds[erc1155IdKey]; 
 
-        // dari sini bisa kita ketahui tipe-nya apakah charity atau bukan
         bool _charity = mkStCharities[marketStartId];
 
+        // --- transfer components and fees here will be different if NFT is charity and not ---
         if(_charity == true) {
             buyFees[buyCount] = BuyFeeObj(
                 250,       // tb                  
@@ -1508,7 +1500,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
                 10         // introducer
             );
         }
-        // --- komponen fee disini akan berbeda jika NFT charity dan bukan ---
+        // --- transfer components and fees here will be different if NFT is charity and not ---
 
         return buyCount;
     }
@@ -1516,30 +1508,25 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     function cancelBuy(uint256 _buyId) public returns (bool) {
         require(contractPause == false, "Contract pause");
 
-        // cari buy dari map buys
         BuyObj memory buyObj = buys[_buyId];
 
-        // pastikan belum di eksekusi
         require(buyObj.executed == false, "Executed");
 
-        // buy ini harus punya dia sendiri
         require(msg.sender == buyObj.buyer, "Not your data");
         
-        // kalkulasi yang akan ditransfer
         uint256 coinAmount = (buyObj.nftAmount).mul(buyObj.priceOne);
 
-        // balikkan yang belum terbeli
-        payable(buyObj.buyer).transfer(coinAmount);
-
-        // jadikan nftAmount = 0 dan executed = true
         buys[_buyId].nftAmount = 0;
         buys[_buyId].executed = true;
+
+        // transfer back to the buyer
+        payable(buyObj.buyer).transfer(coinAmount);
 
         return true;
     }
     
     /**
-     * Bagian ini dipecah hanya karena ingin menghilangkan stack too deep
+    * Just get rid of stack too deep
     */
     function _calcCoin(
         uint256 _buyId,
@@ -1560,7 +1547,7 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
         uint256 coinForTbCom = totalCoin.mul(buyFees[_buyId].tb_com).div(10000); 
 
         // coin for introducer
-        // disini kita gunakan substraction supaya jumlah semua match
+        // Using substraction to make all of the amount exact match
         uint256 coinForIntroducer = totalCoin
                                         .sub(coinForAdmin)
                                         .sub(coinForSeller)
@@ -1571,75 +1558,66 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     }
 
     /**
-     * Bagian ini nge-hit order book buys
+    * This function is used to execute existing buys on the blockchain
     */
-    function sellExec(uint256 _buyId, uint256 _qty) public payable returns (uint256) {
+    function sellExec(uint256 _buyId, uint256 _qty) public returns (uint256) {
         require(contractPause == false, "Contract pause");
 
-        // ambil data buy yang dimaksud
-        //BuyObj memory buyObj = buys[_buyId];
+        // NOTE: LOCAL VARIABLE
+        BuyObj memory buyObj = buys[_buyId];
 
-        // ambil data key first sell-nya untuk mengetahui siapa introducer, siapa creator 
-        bytes32 erc1155IdKey  = keccak256(abi.encode(buys[_buyId].ierc1155Address, "-" , buys[_buyId].nftId));
+        // take the first sell key data to find out who is the introducer, who is the creator
+        bytes32 erc1155IdKey  = keccak256(abi.encode(buyObj.ierc1155Address, "-" , buyObj.nftId));
         uint256 mkStId = mkSt1155AndIds[erc1155IdKey];
+ 
+        require(buyObj.executed == false, "Executed");
 
-        // pastikan belum executed 
-        require(buys[_buyId].executed == false, "Executed");
+        uint256 sellerQtyTotal = (buyObj.ierc1155Address).balanceOf(msg.sender, buyObj.nftId);
 
-        // pastikan seller punya ERC1155 yang dimaksud 
-        uint256 sellerQtyTotal = (buys[_buyId].ierc1155Address).balanceOf(msg.sender, buys[_buyId].nftId);
-
-        // pastikan total yang dipunya tidak melebihi dari yang dia sedang jual
         require(sellerQtyTotal >= _qty, "You put in more than yours");
 
-        // pastikan permintaan dia tidak melebihi yang tersimpan dalam blockchain
-        require(_qty <= buys[_buyId].nftAmount, "Qty greater than available");
+        require(_qty <= buyObj.nftAmount, "Qty greater than available");
 
-        // lakukan pengurangan qty yang ada di blockchain
-        buys[_buyId].nftAmount = (buys[_buyId].nftAmount).sub(_qty);
+        // reduce the existing qty on the blockchain
+        // NOTE: CHANGE STORAGE HERE
+        buys[_buyId].nftAmount = (buyObj.nftAmount).sub(_qty);
 
         // --------
         StdCoinsSpread memory coinSpread = _calcCoin(_buyId, _qty);
         
-        // transfer coin kepada TB
+        // transfer coin TB
         payable(admFeeAddr).transfer(coinSpread.coinForAdmin);
 
-        // transfer coin kepada seller
+        // transfer coin seller
         payable(msg.sender).transfer(coinSpread.coinForSeller);
 
-        // transfer coin kepada creator
+        // transfer coin creator
         payable(mkStCreators[mkStId]).transfer(coinSpread.coinForCreator);
 
-        // transfer coin kepada comBase 
+        // transfer coin comBase 
         payable(comBase).transfer(coinSpread.coinForTbCom);
 
-        // transfer coin kepada introducer 
+        // transfer coin introducer 
         payable(mkStIntros[mkStId]).transfer(coinSpread.coinForIntroducer);
         // ---------
 
-        // ----- catatkan dalam history -----
+        // ----- history -----
         historyCount = historyCount + 1;
         histories[historyCount] = HistoryObj(
             true,
             _buyId,
             msg.sender,
-            buys[_buyId].buyer,
-            buys[_buyId].priceOne,
+            buyObj.buyer,
+            buyObj.priceOne,
             _qty
         );
-        // ----- catatkan dalam history -----
+        // ----- history -----
 
-        // kirim NFT kepada buyer 
-        _safeNftTransferFrom(
-            msg.sender,
-            buys[_buyId].buyer,
-            buys[_buyId].ierc1155Address,
-            buys[_buyId].nftId,
-            _qty
-        );
+        // Transfer NFT to buyer
+        (buys[_buyId].ierc1155Address).safeTransferFrom(msg.sender, buyObj.buyer, buyObj.nftId, _qty, '');
 
-        // catat menjadi executed
-        // code ini ditaro dibawah agar tidak terjadi kesalahan stuck karena buys sudah executed
+        // executed state
+        // NOTE: comparison here must use the one from storage
         if(buys[_buyId].nftAmount == 0) {
             buys[_buyId].executed = true;
         }
@@ -1653,6 +1631,6 @@ contract TopBridgeMarket is Ownable, ERC1155Receiver, ITopBridgeMarket {
     }
 
     function emergencyNftTransfer(address _address, IERC1155 _nftAddress, uint256 _nftId, uint256 _nftTotal) public onlyOwner  {
-        _safeNftTransferFrom(address(this), _address, _nftAddress, _nftId, _nftTotal);       
+        _nftAddress.safeTransferFrom(address(this), _address, _nftId, _nftTotal, '');  
     }
 }
