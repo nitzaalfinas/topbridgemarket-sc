@@ -1994,7 +1994,7 @@ abstract contract Ownable is Context {
  * roles, as well as the default admin role, which will let it grant both minter
  * and pauser roles to other accounts.
  */
-contract MyErc1155Contract is Context, AccessControlEnumerable, ERC1155Burnable, ERC1155Pausable, Ownable {
+contract TopBridgeErc1155Contract is Context, AccessControlEnumerable, ERC1155Burnable, ERC1155Pausable, Ownable {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
@@ -2104,6 +2104,5 @@ contract MyErc1155Contract is Context, AccessControlEnumerable, ERC1155Burnable,
     function setUri(string memory newuri) public onlyOwner {
         _setURI(newuri);
     }
-
     
 }
