@@ -2029,8 +2029,8 @@ contract TopBridgeErc1155Contract is Context, AccessControlEnumerable, ERC1155Bu
         // gak boleh mint yang sudah ada
         require(erc1155Creators[id] == address(0), "ERC1155SC: can not mint");
 
-        erc1155Creators[id] = msg.sender; // catat siapa yang mint         
-        erc1155Amounts[id]  = amount;     // catat berapa jumlah yang di mint
+        erc1155Creators[id] = msg.sender; // who mint
+        erc1155Amounts[id]  = amount;     // amount of mint
 
         _mint(to, id, amount, data);
     }
